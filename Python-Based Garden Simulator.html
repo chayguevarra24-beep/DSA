@@ -1,0 +1,1439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Python-Based Garden Simulator</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@0.454.0/dist/umd/lucide.js"></script>
+<script src="https://cdn.jsdelivr.net/pyodide/v0.26.1/full/pyodide.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
+body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #1e261c; color: #f3f4f6; }
+.code-font { font-family: 'JetBrains Mono', monospace; }
+.glass-panel { background: rgba(40, 54, 35, 0.45); backdrop-filter: blur(12px); border: 1px solid rgba(120, 143, 114, 0.2); box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3); }
+.cell-soil { background:#2a3825; border:1px solid #3d5233; }
+.cell-reservoir { background:#0e3a52; border:1px solid #2e7ba8; }
+.cell-ready { box-shadow: 0 0 0 2px #f59e0b inset; animation: pulseGlow 1.4s infinite; }
+@keyframes pulseGlow { 0%,100%{ filter:brightness(1);} 50%{ filter:brightness(1.35);} }
+.tab-btn { transition: all .15s ease; }
+.mini-cell { aspect-ratio:1; display:flex; align-items:center; justify-content:center; font-size:10px; border-radius:6px; }
+table.dsa-table th, table.dsa-table td { padding: 6px 8px; text-align:left; }
+table.dsa-table tr:nth-child(even) { background: rgba(255,255,255,0.02); }
+::-webkit-scrollbar { width:6px; height:6px; }
+::-webkit-scrollbar-thumb { background:#3d5233; border-radius:4px; }
+</style>
+</head>
+<body class="min-h-screen p-4 flex flex-col justify-between overflow-x-hidden">
+
+<header class="w-full max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4 pb-2 border-b border-[#43533c]/40">
+  <div>
+    <div class="flex items-center gap-2">
+      <h1 class="text-2xl font-extrabold tracking-tight text-emerald-100">Python-Based Garden Simulator</h1>
+      <span id="version-badge" class="text-[10px] font-bold uppercase tracking-widest text-emerald-400/90 bg-emerald-950/50 border border-emerald-800/60 px-2 py-0.5 rounded-full"></span>
+    </div>
+    <p class="text-xs text-emerald-300/80 font-medium">SDG 2, 13, 15</p>
+  </div>
+  <div class="flex items-center gap-3">
+    <div class="glass-panel px-4 py-2 rounded-xl flex flex-col items-end">
+      <span class="text-[10px] text-emerald-400 uppercase tracking-widest font-bold">DAY</span>
+      <span class="text-lg font-extrabold text-white" id="day-counter">1</span>
+    </div>
+    <div class="glass-panel px-4 py-2 rounded-xl flex flex-col items-end">
+      <span class="text-[10px] text-emerald-400 uppercase tracking-widest font-bold">STEWARDSHIP</span>
+      <span class="text-lg font-extrabold text-emerald-300" id="stewardship-counter">0%</span>
+    </div>
+  </div>
+</header>
+
+<main class="w-full max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-4 flex-grow">
+
+  <!-- LEFT: RESOURCES -->
+  <section id="resources-section" class="lg:col-span-3 glass-panel rounded-2xl p-4 h-fit">
+    <h2 class="text-base font-bold text-emerald-200 border-b border-[#43533c]/30 pb-2 mb-4 flex items-center gap-2">
+      <i data-lucide="database" class="w-4 h-4 text-emerald-400"></i> Resource Storage
+    </h2>
+    <div class="space-y-4">
+      <div>
+        <div class="flex justify-between text-xs font-semibold"><span class="text-blue-300">Water Reserves</span><span id="water-text">0 / 200 L</span></div>
+        <div class="w-full bg-[#1b2219] h-2.5 rounded-full overflow-hidden"><div id="water-bar" class="bg-gradient-to-r from-blue-500 to-cyan-400 h-full rounded-full" style="width:0%"></div></div>
+      </div>
+      <div>
+        <div class="flex justify-between text-xs font-semibold"><span class="text-emerald-300">Seed Inventory</span><span id="seeds-text">0 / 100</span></div>
+        <div class="w-full bg-[#1b2219] h-2.5 rounded-full overflow-hidden"><div id="seeds-bar" class="bg-gradient-to-r from-emerald-500 to-lime-400 h-full rounded-full" style="width:0%"></div></div>
+      </div>
+      <div>
+        <div class="flex justify-between text-xs font-semibold"><span class="text-amber-300">Solar Energy</span><span id="energy-text">0 / 120 Wh</span></div>
+        <div class="w-full bg-[#1b2219] h-2.5 rounded-full overflow-hidden"><div id="energy-bar" class="bg-gradient-to-r from-amber-500 to-yellow-300 h-full rounded-full" style="width:0%"></div></div>
+      </div>
+      <div>
+        <div class="flex justify-between text-xs font-semibold"><span class="text-rose-300">Community Hope</span><span id="hope-text">0 / 100</span></div>
+        <div class="w-full bg-[#1b2219] h-2.5 rounded-full overflow-hidden"><div id="hope-bar" class="bg-gradient-to-r from-rose-500 to-pink-400 h-full rounded-full" style="width:0%"></div></div>
+      </div>
+      <div class="flex justify-between text-xs font-semibold"><span class="text-yellow-200">Coins</span><span id="coins-text" class="text-yellow-200">0 Coins</span></div>
+      <button onclick="advanceDay()" class="w-full bg-emerald-600 hover:bg-emerald-500 py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2">
+        <i data-lucide="sun" class="w-4 h-4"></i> Advance Day
+      </button>
+      <p class="text-[10px] text-emerald-400/70 leading-relaxed">Each day: the climate <b>queue</b> resolves its front event (FIFO), solar energy regenerates, and every planted tile grows by an amount set by its <b>Dijkstra</b> irrigation distance from the reservoir.</p>
+    </div>
+  </section>
+
+  <!-- CENTER -->
+  <section class="lg:col-span-6 flex flex-col gap-4">
+    <div class="flex bg-[#192218] p-1.5 rounded-xl border border-emerald-800/40 flex-wrap gap-1">
+      <button onclick="switchTab('game')" id="tab-game" class="tab-btn px-3 py-1.5 rounded-lg text-xs font-bold">Garden</button>
+      <button onclick="switchTab('catalog')" id="tab-catalog" class="tab-btn px-3 py-1.5 rounded-lg text-xs font-bold">Seed Catalog</button>
+      <button onclick="switchTab('taxonomy')" id="tab-taxonomy" class="tab-btn px-3 py-1.5 rounded-lg text-xs font-bold">Taxonomy Tree</button>
+      <button onclick="switchTab('irrigation')" id="tab-irrigation" class="tab-btn px-3 py-1.5 rounded-lg text-xs font-bold">Irrigation</button>
+      <button onclick="switchTab('advisor')" id="tab-advisor" class="tab-btn px-3 py-1.5 rounded-lg text-xs font-bold">Planning Advisor</button>
+      <button onclick="switchTab('code')" id="tab-code" class="tab-btn px-3 py-1.5 rounded-lg text-xs font-bold">Code Lab</button>
+    </div>
+
+    <!-- GARDEN TAB -->
+    <div id="view-game" class="glass-panel rounded-2xl p-6 min-h-[420px]">
+      <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+        <div>
+          <h2 class="text-lg font-bold text-white">Sanctuary Garden Grid</h2>
+          <p class="text-xs text-emerald-300">Pick a seed, click empty soil to plant. Click a glowing tile to harvest.</p>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="text-xs text-emerald-300">Plant:</span>
+          <select id="crop-selector" class="bg-[#1b2219] border border-emerald-700 text-emerald-100 text-sm rounded-xl px-3 py-2"></select>
+        </div>
+      </div>
+      <div id="garden-grid" class="grid grid-cols-5 gap-3"></div>
+      <p class="text-[10px] text-emerald-400/60 mt-3">💧 = reservoir (fixed, unplantable). Amber glow = ready to harvest.</p>
+    </div>
+
+    <!-- CATALOG TAB -->
+    <div id="view-catalog" class="glass-panel rounded-2xl p-5 min-h-[420px] hidden flex-col gap-3">
+      <h2 class="text-lg font-bold text-white">Seed Catalog</h2>
+      <div class="flex flex-wrap gap-2 text-xs" id="category-filters"></div>
+      <div class="flex flex-wrap items-end gap-2 text-xs">
+        <div><label class="block text-emerald-400 mb-1">Sort field</label>
+          <select id="sort-field" class="bg-[#1b2219] border border-emerald-700 rounded-lg px-2 py-1.5"><option value="cost">Cost</option><option value="growthDays">Growth Days</option><option value="hope">Hope Value</option></select>
+        </div>
+        <div><label class="block text-emerald-400 mb-1">Algorithm</label>
+          <select id="sort-algo" class="bg-[#1b2219] border border-emerald-700 rounded-lg px-2 py-1.5"><option value="bubble">Bubble Sort</option><option value="insertion">Insertion Sort</option><option value="selection">Selection Sort</option><option value="quick">Quick Sort</option><option value="merge">Merge Sort</option></select>
+        </div>
+        <button onclick="handleSort()" class="bg-[#2a3825] hover:bg-[#34462e] border border-emerald-800 px-3 py-1.5 rounded-lg font-semibold">Sort</button>
+        <button onclick="handleFastest()" class="bg-[#2a3825] hover:bg-[#34462e] border border-emerald-800 px-3 py-1.5 rounded-lg font-semibold">BST: Fastest Growing</button>
+        <button onclick="handleSlowest()" class="bg-[#2a3825] hover:bg-[#34462e] border border-emerald-800 px-3 py-1.5 rounded-lg font-semibold">BST: Slowest Growing</button>
+      </div>
+      <div class="flex flex-wrap items-end gap-2 text-xs">
+        <div><label class="block text-emerald-400 mb-1">Search value ({sort field})</label>
+          <input id="search-value" type="number" class="bg-[#1b2219] border border-emerald-700 rounded-lg px-2 py-1.5 w-24">
+        </div>
+        <div><label class="block text-emerald-400 mb-1">Mode</label>
+          <select id="search-mode" class="bg-[#1b2219] border border-emerald-700 rounded-lg px-2 py-1.5"><option value="linear">Linear Search</option><option value="binary">Binary Search</option></select>
+        </div>
+        <button onclick="handleSearch()" class="bg-[#2a3825] hover:bg-[#34462e] border border-emerald-800 px-3 py-1.5 rounded-lg font-semibold">Search</button>
+        <div class="flex-1"></div>
+        <div><label class="block text-emerald-400 mb-1">Hash lookup by name</label>
+          <input id="hash-lookup-input" type="text" placeholder="e.g. Rose Bush" class="bg-[#1b2219] border border-emerald-700 rounded-lg px-2 py-1.5">
+        </div>
+        <button onclick="handleHashLookup()" class="bg-[#2a3825] hover:bg-[#34462e] border border-emerald-800 px-3 py-1.5 rounded-lg font-semibold">Look up (O(1))</button>
+      </div>
+      <div class="flex flex-wrap items-center gap-2 text-xs">
+        <span class="text-emerald-400 font-semibold">BST traversal:</span>
+        <button onclick="handleBstTraversal('levelorder')" class="bg-[#213a2e] hover:bg-[#2a4a3a] border border-emerald-700 px-3 py-1.5 rounded-lg font-semibold">BFS: Level-order</button>
+        <button onclick="handleBstTraversal('preorder')" class="bg-[#2a3825] hover:bg-[#34462e] border border-emerald-800 px-3 py-1.5 rounded-lg font-semibold">DFS: Pre-order</button>
+        <button onclick="handleBstTraversal('inorder')" class="bg-[#2a3825] hover:bg-[#34462e] border border-emerald-800 px-3 py-1.5 rounded-lg font-semibold">DFS: In-order</button>
+        <button onclick="handleBstTraversal('postorder')" class="bg-[#2a3825] hover:bg-[#34462e] border border-emerald-800 px-3 py-1.5 rounded-lg font-semibold">DFS: Post-order</button>
+      </div>
+      <div id="catalog-note" class="text-[11px] text-amber-300/90 min-h-[16px]"></div>
+      <div id="bst-traversal-output" class="bg-black/50 border border-emerald-900 rounded-xl p-3 text-xs font-mono min-h-[40px] whitespace-pre-wrap"></div>
+      <div class="overflow-auto flex-1">
+        <table class="dsa-table w-full text-xs">
+          <thead class="text-emerald-400 uppercase text-[10px]"><tr><th></th><th>Name</th><th>Cost</th><th>Growth</th><th>Water</th><th>Hope</th><th>Owned</th><th></th></tr></thead>
+          <tbody id="catalog-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- TAXONOMY TREE TAB -->
+    <div id="view-taxonomy" class="glass-panel rounded-2xl p-5 min-h-[420px] hidden flex-col gap-3">
+      <h2 class="text-lg font-bold text-white">Plant Taxonomy Tree</h2>
+      <p class="text-xs text-emerald-300">A real hierarchical tree — Garden → Category → Crop. Click ▶/▼ to expand or collapse a branch; click a category to filter the Seed Catalog by it; click a crop for its stats.</p>
+      <div class="flex gap-2">
+        <button onclick="runTaxonomyTraversal('preorder')" class="bg-[#2a3825] hover:bg-[#34462e] border border-emerald-800 px-3 py-1.5 rounded-lg text-xs font-semibold">Pre-order Traversal (DFS)</button>
+        <button onclick="runTaxonomyTraversal('postorder')" class="bg-[#2a3825] hover:bg-[#34462e] border border-emerald-800 px-3 py-1.5 rounded-lg text-xs font-semibold">Post-order Traversal (DFS)</button>
+        <button onclick="runTaxonomyTraversal('levelorder')" class="bg-[#2a3825] hover:bg-[#34462e] border border-emerald-800 px-3 py-1.5 rounded-lg text-xs font-semibold">Level-order Traversal (BFS)</button>
+        <button onclick="expandAllTaxonomy()" class="bg-[#2a3825] hover:bg-[#34462e] border border-emerald-800 px-3 py-1.5 rounded-lg text-xs font-semibold">Expand All</button>
+        <button onclick="collapseAllTaxonomy()" class="bg-[#2a3825] hover:bg-[#34462e] border border-emerald-800 px-3 py-1.5 rounded-lg text-xs font-semibold">Collapse All</button>
+      </div>
+      <div id="taxonomy-tree" class="text-sm space-y-1 overflow-auto flex-1"></div>
+      <div id="taxonomy-output" class="bg-black/50 border border-emerald-900 rounded-xl p-3 text-xs font-mono min-h-[50px] whitespace-pre-wrap"></div>
+    </div>
+
+    <!-- IRRIGATION TAB -->
+    <div id="view-irrigation" class="glass-panel rounded-2xl p-5 min-h-[420px] hidden flex-col gap-3">
+      <h2 class="text-lg font-bold text-white">Irrigation Network</h2>
+      <p class="text-xs text-emerald-300">Weighted graph of garden plots. Cell number = Dijkstra water-cost from the reservoir 💧. Farther plots grow slower.</p>
+      <div id="irrigation-grid" class="grid grid-cols-5 gap-1.5 max-w-xs"></div>
+      <div class="flex gap-2">
+        <button onclick="runTraversal('bfs')" class="bg-[#2a3825] hover:bg-[#34462e] border border-emerald-800 px-3 py-1.5 rounded-lg text-xs font-semibold">Run BFS from reservoir</button>
+        <button onclick="runTraversal('dfs')" class="bg-[#2a3825] hover:bg-[#34462e] border border-emerald-800 px-3 py-1.5 rounded-lg text-xs font-semibold">Run DFS from reservoir</button>
+      </div>
+      <div id="traversal-output" class="bg-black/50 border border-emerald-900 rounded-xl p-3 text-xs font-mono min-h-[60px] whitespace-pre-wrap"></div>
+    </div>
+
+    <!-- ADVISOR TAB -->
+    <div id="view-advisor" class="glass-panel rounded-2xl p-5 min-h-[420px] hidden flex-col gap-4">
+      <h2 class="text-lg font-bold text-white">Planning Advisor</h2>
+      <div class="border border-emerald-800/50 rounded-xl p-3">
+        <h3 class="font-bold text-emerald-300 text-sm mb-1">Greedy Budget Planner</h3>
+        <p class="text-[11px] text-emerald-400/80 mb-2">Always buys the cheapest available seed next — maximizes the <b>number</b> of seeds you get for your coins.</p>
+        <div class="flex gap-2 items-end text-xs">
+          <div><label class="block text-emerald-400 mb-1">Coin budget</label><input id="greedy-budget" type="number" value="30" class="bg-[#1b2219] border border-emerald-700 rounded-lg px-2 py-1.5 w-24"></div>
+          <button onclick="handleGreedy()" class="bg-[#2a3825] hover:bg-[#34462e] border border-emerald-800 px-3 py-1.5 rounded-lg font-semibold">Run Greedy Plan</button>
+        </div>
+        <div id="greedy-result" class="text-xs mt-2 text-emerald-100"></div>
+      </div>
+      <div class="border border-emerald-800/50 rounded-xl p-3">
+        <h3 class="font-bold text-emerald-300 text-sm mb-1">DP Optimal Planting Advisor</h3>
+        <p class="text-[11px] text-emerald-400/80 mb-2">Unbounded knapsack: maximizes total <b>hope</b> your coins can buy, not just seed count.</p>
+        <div class="flex gap-2 items-end text-xs">
+          <div><label class="block text-emerald-400 mb-1">Coin budget</label><input id="dp-budget" type="number" value="30" class="bg-[#1b2219] border border-emerald-700 rounded-lg px-2 py-1.5 w-24"></div>
+          <button onclick="handleDP()" class="bg-[#2a3825] hover:bg-[#34462e] border border-emerald-800 px-3 py-1.5 rounded-lg font-semibold">Run DP Advisor</button>
+        </div>
+        <div id="dp-result" class="text-xs mt-2 text-emerald-100"></div>
+      </div>
+    </div>
+
+    <!-- CODE LAB TAB -->
+    <div id="view-code" class="glass-panel rounded-2xl p-6 flex-col flex-grow hidden">
+      <h2 class="font-bold mb-1 flex items-center gap-2"><i data-lucide="code" class="w-5 h-5 text-emerald-400"></i> Student Code Editor (Lab)</h2>
+      <p class="text-[11px] text-amber-300/90 mb-3">This runs real CPython via Pyodide. It calls its own preview panel below (not your live garden), so experimenting here never affects your game. Pyodide needs to fetch its interpreter from a CDN at runtime — this works when the page is opened normally (locally or on your own host); some hosted preview sandboxes block that fetch.</p>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 flex-1 min-h-0">
+        <div class="flex flex-col min-h-0">
+          <select id="topic-selector" onchange="loadTopic()" class="w-full bg-[#1b2219] border border-emerald-700 rounded-xl p-2.5 mb-2 text-xs"></select>
+          <textarea id="code-editor" class="flex-1 bg-[#0a0f0a] border border-emerald-800 rounded-xl p-3 code-font text-xs font-medium leading-relaxed min-h-[220px]" spellcheck="false"></textarea>
+          <button onclick="runPythonCode()" class="mt-3 bg-emerald-600 hover:bg-emerald-500 py-2.5 rounded-xl font-bold text-white flex items-center justify-center gap-2 text-sm">
+            <i data-lucide="play" class="w-4 h-4"></i> Run Python Code
+          </button>
+          <div id="output-console" class="mt-3 bg-black/70 border border-emerald-900 rounded-xl p-3 text-[11px] max-h-32 overflow-auto font-mono whitespace-pre-wrap"></div>
+        </div>
+        <div class="flex flex-col gap-2 min-h-0 overflow-auto">
+          <h3 class="text-xs font-bold text-emerald-400 uppercase">Lab Preview (sandboxed)</h3>
+          <div id="demo-garden-grid" class="grid grid-cols-5 gap-1"></div>
+          <select id="demo-crop-selector" class="bg-[#1b2219] border border-emerald-700 text-xs rounded-lg px-2 py-1"></select>
+          <div class="text-[10px] space-y-1">
+            <div class="flex justify-between"><span>Water</span><span id="demo-water-text">0/200</span></div>
+            <div class="w-full bg-[#1b2219] h-1.5 rounded-full overflow-hidden"><div id="demo-water-bar" class="bg-blue-400 h-full" style="width:0%"></div></div>
+            <div class="flex justify-between"><span>Seeds</span><span id="demo-seeds-text">0/100</span></div>
+            <div class="w-full bg-[#1b2219] h-1.5 rounded-full overflow-hidden"><div id="demo-seeds-bar" class="bg-lime-400 h-full" style="width:0%"></div></div>
+            <div class="flex justify-between"><span>Energy</span><span id="demo-energy-text">0/120</span></div>
+            <div class="w-full bg-[#1b2219] h-1.5 rounded-full overflow-hidden"><div id="demo-energy-bar" class="bg-amber-400 h-full" style="width:0%"></div></div>
+            <div class="flex justify-between"><span>Hope</span><span id="demo-hope-text">0/100</span></div>
+            <div class="w-full bg-[#1b2219] h-1.5 rounded-full overflow-hidden"><div id="demo-hope-bar" class="bg-pink-400 h-full" style="width:0%"></div></div>
+            <div class="flex justify-between"><span>Coins</span><span id="demo-coins-text">0</span></div>
+          </div>
+          <div id="demo-climate-queue" class="text-[10px] space-y-1"></div>
+          <div id="demo-action-stack" class="text-[10px] space-y-1"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- RIGHT PANEL -->
+  <section class="lg:col-span-3 flex flex-col gap-4">
+    <div id="climate-queue-panel" class="glass-panel rounded-2xl p-4">
+      <h3 class="font-bold text-emerald-400 mb-3 flex items-center gap-2"><i data-lucide="cloud-lightning" class="w-4 h-4"></i> Climate Queue (FIFO)</h3>
+      <div id="climate-queue" class="space-y-3 text-sm"></div>
+    </div>
+    <div id="stack-panel" class="glass-panel rounded-2xl p-4 flex-1 flex flex-col">
+      <h3 class="font-bold text-emerald-400 mb-3 flex items-center gap-2"><i data-lucide="history" class="w-4 h-4"></i> Action History (Stack)</h3>
+      <div id="action-stack" class="flex-1 space-y-2 text-sm overflow-auto"></div>
+      <button onclick="triggerUndo()" class="mt-4 w-full bg-[#2a3825] hover:bg-[#34462e] text-emerald-200 py-2.5 rounded-xl text-sm font-medium flex items-center justify-center gap-2 border border-emerald-800">
+        <i data-lucide="undo-2" class="w-4 h-4"></i> Undo (Stack Pop)
+      </button>
+    </div>
+  </section>
+
+</main>
+
+<script>
+const APP_VERSION = "0.12.0";
+
+/* =====================================================================
+   CATALOG — the "master data" for every plant. A plain object doubles
+   as an O(1) lookup for gameplay; a separate SimpleHashTable below
+   demonstrates the hash-table mechanics explicitly for Topic 6.
+===================================================================== */
+const CATALOG = {
+  "Carrot":       { emoji:"🥕", cost:4,  growthDays:3, waterNeed:2, hope:3,  category:"Vegetables" },
+  "Lettuce":      { emoji:"🥬", cost:3,  growthDays:2, waterNeed:1, hope:2,  category:"Vegetables" },
+  "Tomato":       { emoji:"🍅", cost:6,  growthDays:4, waterNeed:3, hope:5,  category:"Vegetables" },
+  "Sunflower":    { emoji:"🌻", cost:8,  growthDays:3, waterNeed:2, hope:7,  category:"Flowers" },
+  "Marigold":     { emoji:"🌼", cost:5,  growthDays:2, waterNeed:1, hope:4,  category:"Flowers" },
+  "Rose Bush":    { emoji:"🌹", cost:12, growthDays:5, waterNeed:4, hope:10, category:"Flowers" },
+  "Willow Sapling":{ emoji:"🌿", cost:16, growthDays:7, waterNeed:5, hope:13, category:"Trees" },
+  "Oak Sapling":  { emoji:"🌳", cost:20, growthDays:9, waterNeed:6, hope:16, category:"Trees" },
+};
+const RESERVOIR_INDEX = 12; // center of the 5x5 grid
+
+/* =====================================================================
+   TOPIC 1 — OOP + Stack (real undo stack for the live game)
+===================================================================== */
+class UndoStack {
+  constructor(){ this.items = []; }
+  push(action){ this.items.push(action); renderActionStack(); }
+  pop(){ return this.items.pop(); }
+  isEmpty(){ return this.items.length === 0; }
+}
+const undoStack = new UndoStack();
+
+/* =====================================================================
+   TOPIC 2 — Queue (FIFO climate events)
+===================================================================== */
+let climateQueue = [];
+function enqueueClimateEvent(event){ climateQueue.push(event); renderClimateQueue(); }
+function dequeueClimateEvent(){ const e = climateQueue.shift(); renderClimateQueue(); return e; }
+
+const CLIMATE_EVENTS = [
+  { key:"rain",    label:"🌧️ Rain Shower",     apply:s=>{ s.water=Math.min(s.waterMax, s.water+25); } },
+  { key:"heat",    label:"🔥 Heatwave",         apply:s=>{ s.water=Math.max(0, s.water-15); s.energy=Math.min(s.energyMax, s.energy+10); } },
+  { key:"drought", label:"☀️ Drought Warning",   apply:s=>{ s.water=Math.max(0, s.water-30); } },
+  { key:"frost",   label:"❄️ Frost Warning",     apply:s=>{ s.hope=Math.max(0, s.hope-10); }, freezesGrowth:true },
+  { key:"sunny",   label:"🌞 Sunny Spell",       apply:s=>{ s.energy=Math.min(s.energyMax, s.energy+20); s.hope=Math.min(s.hopeMax, s.hope+5); } },
+  { key:"pests",   label:"🐛 Pest Swarm",        apply:s=>{
+      const planted = state.grid.map((c,i)=>c?i:null).filter(i=>i!==null);
+      if(planted.length){ const t = planted[Math.floor(Math.random()*planted.length)]; state.grid[t]=null; }
+      s.hope = Math.max(0, s.hope-5);
+    } },
+];
+function randomClimateEvent(){ return CLIMATE_EVENTS[Math.floor(Math.random()*CLIMATE_EVENTS.length)]; }
+
+/* =====================================================================
+   TOPIC 3 — 2D array / grid (the garden itself) + dynamic array (seed bag)
+===================================================================== */
+const state = {
+  day: 1,
+  water: 150, waterMax: 200,
+  energy: 60, energyMax: 120,
+  hope: 55, hopeMax: 100,
+  coins: 60,
+  seedBag: { "Carrot": 3, "Sunflower": 2 },     // dynamic array-like inventory
+  grid: Array(25).fill(null),                    // static 5x5 array, flattened
+};
+function totalSeeds(){ return Object.values(state.seedBag).reduce((a,b)=>a+b,0); }
+
+/* =====================================================================
+   TOPIC 4 — Hierarchical tree: Garden -> Category -> Crop.
+   Real parent-child structure (not just a flat filter list), with
+   expand/collapse state and DFS pre-order / BFS level-order traversals.
+===================================================================== */
+function buildCategoryTree(){
+  const root = { name: "Sanctuary Garden", type:"root", children: [] };
+  const catNodes = {};
+  Object.entries(CATALOG).forEach(([name, info]) => {
+    if(!catNodes[info.category]){
+      catNodes[info.category] = { name: info.category, type:"category", children: [] };
+      root.children.push(catNodes[info.category]);
+    }
+    catNodes[info.category].children.push({ name, type:"crop", info, children: [] });
+  });
+  return root;
+}
+const categoryTree = buildCategoryTree();
+const expandedTaxonomyNodes = new Set(["Sanctuary Garden", ...categoryTree.children.map(c=>c.name)]); // root + categories start open
+
+function toggleTaxonomyNode(path){
+  if(expandedTaxonomyNodes.has(path)) expandedTaxonomyNodes.delete(path);
+  else expandedTaxonomyNodes.add(path);
+  renderTaxonomyTree();
+}
+function expandAllTaxonomy(){
+  const addAll = node => { expandedTaxonomyNodes.add(node.name); (node.children||[]).forEach(addAll); };
+  addAll(categoryTree);
+  renderTaxonomyTree();
+}
+function collapseAllTaxonomy(){ expandedTaxonomyNodes.clear(); renderTaxonomyTree(); }
+
+function taxonomyPreorder(node, order){
+  order.push(node.name);
+  (node.children||[]).forEach(child => taxonomyPreorder(child, order));
+  return order;
+}
+function taxonomyPostorder(node, order){
+  (node.children||[]).forEach(child => taxonomyPostorder(child, order));
+  order.push(node.name);
+  return order;
+}
+function taxonomyLevelOrder(root){
+  const queue = [root], order = [];
+  while(queue.length){
+    const node = queue.shift();
+    order.push(node.name);
+    (node.children||[]).forEach(child => queue.push(child));
+  }
+  return order;
+}
+function runTaxonomyTraversal(kind){
+  let order, label;
+  if(kind==="preorder"){ order = taxonomyPreorder(categoryTree, []); label = "Pre-order (DFS)"; }
+  else if(kind==="postorder"){ order = taxonomyPostorder(categoryTree, []); label = "Post-order (DFS)"; }
+  else { order = taxonomyLevelOrder(categoryTree); label = "Level-order (BFS)"; }
+  document.getElementById("taxonomy-output").textContent = `${label} visit order:\n${order.join(" -> ")}`;
+}
+
+/* =====================================================================
+   TOPIC 5 — Binary Search Tree keyed by growth time
+===================================================================== */
+class BSTNode { constructor(key,name){ this.key=key; this.name=name; this.left=null; this.right=null; } }
+class GrowthBST {
+  constructor(){ this.root=null; }
+  insert(key,name){ this.root=this._insert(this.root,key,name); }
+  _insert(node,key,name){
+    if(!node) return new BSTNode(key,name);
+    if(key < node.key) node.left = this._insert(node.left,key,name);
+    else node.right = this._insert(node.right,key,name);
+    return node;
+  }
+  min(){ let n=this.root; if(!n) return null; while(n.left) n=n.left; return n; }
+  max(){ let n=this.root; if(!n) return null; while(n.right) n=n.right; return n; }
+
+  // ---- DFS traversals: the three classic binary-tree orderings ----
+  preorder(node=this.root, order=[]){      // Root -> Left -> Right
+    if(!node) return order;
+    order.push({ name: node.name, key: node.key });
+    this.preorder(node.left, order);
+    this.preorder(node.right, order);
+    return order;
+  }
+  inorder(node=this.root, order=[]){       // Left -> Root -> Right (sorted order on a BST!)
+    if(!node) return order;
+    this.inorder(node.left, order);
+    order.push({ name: node.name, key: node.key });
+    this.inorder(node.right, order);
+    return order;
+  }
+  postorder(node=this.root, order=[]){     // Left -> Right -> Root
+    if(!node) return order;
+    this.postorder(node.left, order);
+    this.postorder(node.right, order);
+    order.push({ name: node.name, key: node.key });
+    return order;
+  }
+
+  // ---- BFS: level by level, using a plain queue (not recursive) ----
+  levelOrder(){
+    const order = [];
+    if(!this.root) return order;
+    const queue = [this.root];
+    while(queue.length){
+      const node = queue.shift();              // dequeue front -> O(1) amortized via array shift here
+      order.push({ name: node.name, key: node.key });
+      if(node.left) queue.push(node.left);
+      if(node.right) queue.push(node.right);
+    }
+    return order;
+  }
+}
+const growthBST = new GrowthBST();
+Object.entries(CATALOG).forEach(([name,info]) => growthBST.insert(info.growthDays, name));
+
+/* =====================================================================
+   TOPIC 6 — Hash table with chaining + rehashing
+===================================================================== */
+class SimpleHashTable {
+  constructor(capacity=4){ this.capacity=capacity; this.size=0; this.buckets=Array.from({length:capacity},()=>[]); }
+  _hash(key){ let h=0; for(const ch of key) h += ch.charCodeAt(0); return h % this.capacity; }
+  set(key,value){
+    if(this.size/this.capacity >= 0.7) this._rehash();
+    const idx=this._hash(key); const bucket=this.buckets[idx];
+    const existing = bucket.find(e=>e[0]===key);
+    if(existing){ existing[1]=value; return; }
+    bucket.push([key,value]); this.size++;
+  }
+  get(key){ const idx=this._hash(key); const found=this.buckets[idx].find(e=>e[0]===key); return found ? found[1] : undefined; }
+  bucketIndexOf(key){ return this._hash(key); }
+  _rehash(){
+    const old=this.buckets; this.capacity*=2; this.buckets=Array.from({length:this.capacity},()=>[]); this.size=0;
+    for(const bucket of old) for(const [k,v] of bucket) this.set(k,v);
+  }
+}
+const catalogHash = new SimpleHashTable(4);
+Object.entries(CATALOG).forEach(([name,info]) => catalogHash.set(name, info));
+
+/* =====================================================================
+   TOPIC 7 — Weighted graph (adjacency list) + Dijkstra + BFS/DFS
+===================================================================== */
+function buildIrrigationGraph(){
+  const graph = {};
+  for(let r=0;r<5;r++) for(let c=0;c<5;c++){
+    const id=r*5+c; graph[id]=[];
+    [[r-1,c],[r+1,c],[r,c-1],[r,c+1]].forEach(([nr,nc])=>{
+      if(nr>=0&&nr<5&&nc>=0&&nc<5){
+        graph[id].push({ node: nr*5+nc, weight: Math.random()<0.2 ? 3 : 1 });
+      }
+    });
+  }
+  return graph;
+}
+function dijkstra(graph, start){
+  const nodes = Object.keys(graph).map(Number);
+  const dist = {}; nodes.forEach(n=>dist[n]=Infinity); dist[start]=0;
+  const visited = new Set();
+  while(visited.size < nodes.length){
+    let u=null, best=Infinity;
+    for(const n of nodes) if(!visited.has(n) && dist[n]<best){ best=dist[n]; u=n; }
+    if(u===null) break;
+    visited.add(u);
+    for(const edge of graph[u]){ const alt=dist[u]+edge.weight; if(alt<dist[edge.node]) dist[edge.node]=alt; }
+  }
+  return dist;
+}
+function bfsFrom(graph, start){
+  const visited=new Set([start]), queue=[start], order=[];
+  while(queue.length){ const node=queue.shift(); order.push(node);
+    for(const e of graph[node]) if(!visited.has(e.node)){ visited.add(e.node); queue.push(e.node); } }
+  return order;
+}
+function dfsFrom(graph, start, visited=new Set(), order=[]){
+  visited.add(start); order.push(start);
+  for(const e of graph[start]) if(!visited.has(e.node)) dfsFrom(graph, e.node, visited, order);
+  return order;
+}
+const irrigationGraph = buildIrrigationGraph();
+const irrigationDistances = dijkstra(irrigationGraph, RESERVOIR_INDEX);
+
+/* =====================================================================
+   TOPIC 8 — Sorting algorithms (each returns sorted items + comparisons)
+===================================================================== */
+function bubbleSort(items, field){
+  const a=[...items]; let comparisons=0;
+  for(let i=0;i<a.length;i++) for(let j=0;j<a.length-i-1;j++){ comparisons++;
+    if(a[j][field]>a[j+1][field]){ [a[j],a[j+1]]=[a[j+1],a[j]]; } }
+  return { items:a, comparisons };
+}
+function insertionSort(items, field){
+  const a=[...items]; let comparisons=0;
+  for(let i=1;i<a.length;i++){ const key=a[i]; let j=i-1;
+    while(j>=0){ comparisons++; if(a[j][field]>key[field]){ a[j+1]=a[j]; j--; } else break; }
+    a[j+1]=key; }
+  return { items:a, comparisons };
+}
+function selectionSort(items, field){
+  const a=[...items]; let comparisons=0;
+  for(let i=0;i<a.length;i++){ let min=i;
+    for(let j=i+1;j<a.length;j++){ comparisons++; if(a[j][field]<a[min][field]) min=j; }
+    [a[i],a[min]]=[a[min],a[i]]; }
+  return { items:a, comparisons };
+}
+function quickSortCounted(items, field){
+  let comparisons=0;
+  function qs(arr){
+    if(arr.length<=1) return arr;
+    const pivot=arr[Math.floor(arr.length/2)][field];
+    const left=[],mid=[],right=[];
+    for(const item of arr){ comparisons++;
+      if(item[field]<pivot) left.push(item); else if(item[field]>pivot) right.push(item); else mid.push(item); }
+    return [...qs(left), ...mid, ...qs(right)];
+  }
+  const sorted = qs([...items]);
+  return { items: sorted, comparisons };
+}
+function mergeSort(items, field){
+  let comparisons=0;
+  function ms(arr){
+    if(arr.length<=1) return arr;
+    const mid=Math.floor(arr.length/2);
+    const left=ms(arr.slice(0,mid)), right=ms(arr.slice(mid));
+    const merged=[]; let i=0,j=0;
+    while(i<left.length && j<right.length){ comparisons++;
+      if(left[i][field]<=right[j][field]) merged.push(left[i++]); else merged.push(right[j++]); }
+    return [...merged, ...left.slice(i), ...right.slice(j)];
+  }
+  return { items: ms([...items]), comparisons };
+}
+
+/* =====================================================================
+   TOPIC 9 — Searching algorithms
+===================================================================== */
+function linearSearch(arr, field, target){
+  let comparisons=0;
+  for(let i=0;i<arr.length;i++){ comparisons++; if(arr[i][field]===target) return { index:i, comparisons }; }
+  return { index:-1, comparisons };
+}
+function binarySearch(sortedArr, field, target){
+  let low=0, high=sortedArr.length-1, comparisons=0;
+  while(low<=high){ comparisons++;
+    const mid=Math.floor((low+high)/2);
+    if(sortedArr[mid][field]===target) return { index:mid, comparisons };
+    else if(sortedArr[mid][field]<target) low=mid+1; else high=mid-1;
+  }
+  return { index:-1, comparisons };
+}
+
+/* =====================================================================
+   TOPIC 10 — Greedy budget planner
+===================================================================== */
+function greedyPlan(budget){
+  const items = Object.entries(CATALOG).map(([name,info])=>({name,...info})).sort((a,b)=>a.cost-b.cost);
+  let remaining=budget; const bought={}; let progress=true;
+  while(progress){
+    progress=false;
+    for(const item of items) if(item.cost<=remaining){ bought[item.name]=(bought[item.name]||0)+1; remaining-=item.cost; progress=true; }
+  }
+  return { bought, spent: budget-remaining };
+}
+
+/* =====================================================================
+   TOPIC 11 — DP: unbounded knapsack maximizing hope within a coin budget
+===================================================================== */
+function knapsackPlan(budget){
+  const items = Object.entries(CATALOG).map(([name,info])=>({name,...info}));
+  const dp = new Array(budget+1).fill(0);
+  const choice = new Array(budget+1).fill(null);
+  for(let cap=1; cap<=budget; cap++){
+    for(const item of items){
+      if(item.cost<=cap){
+        const val = dp[cap-item.cost] + item.hope;
+        if(val > dp[cap]){ dp[cap]=val; choice[cap]=item.name; }
+      }
+    }
+  }
+  let cap=budget; const bought={};
+  while(cap>0 && choice[cap]){ const name=choice[cap]; bought[name]=(bought[name]||0)+1; cap-=CATALOG[name].cost; }
+  return { bought, hope: dp[budget] };
+}
+
+/* =====================================================================
+   GROWTH STAGES — a planted tile is not the mature plant on day one.
+   It progresses through real stages driven by the same cell.age value
+   the Dijkstra-scaled growth loop already updates each day.
+===================================================================== */
+function growthStage(cell, info){
+  const ratio = cell.age / info.growthDays;
+  if(ratio < 0.34) return { emoji:"🌱", label:"a seedling" };
+  if(ratio < 0.7)  return { emoji:"🌿", label:"sprouting" };
+  return { emoji:"🪴", label:"budding, almost ready" };
+}
+
+/* =====================================================================
+   GAME ACTIONS
+===================================================================== */
+function onCellClick(idx){
+  if(idx===RESERVOIR_INDEX){ showToast("This is the reservoir — the water source for the whole grid."); return; }
+  const cell = state.grid[idx];
+  if(cell){
+    if(cell.ready) harvestCell(idx);
+    else {
+      const info = CATALOG[cell.name];
+      const stage = growthStage(cell, info);
+      showToast(`${stage.emoji} ${cell.name} is ${stage.label} (${cell.age.toFixed(1)}/${info.growthDays} days).`);
+    }
+    return;
+  }
+  const seedName = document.getElementById("crop-selector").value;
+  if(!seedName){ showToast("Choose a seed from the dropdown first."); return; }
+  plantSeed(idx, seedName);
+}
+function plantSeed(idx, name){
+  const owned = state.seedBag[name] || 0;
+  if(owned<=0){ showToast(`No ${name} seeds in your bag — buy some in the Seed Catalog.`); return; }
+  const info = CATALOG[name];
+  if(state.water < info.waterNeed){ showToast("Not enough water reserves to plant this."); return; }
+  state.seedBag[name] = owned - 1;
+  state.water -= info.waterNeed;
+  state.grid[idx] = { name, age:0, ready:false };
+  undoStack.push({ type:"plant", idx, name, waterRefund: info.waterNeed, label:`Planted ${info.emoji} ${name} at plot ${idx}` });
+  renderAll();
+}
+function harvestCell(idx){
+  const cell = state.grid[idx]; const info = CATALOG[cell.name];
+  state.hope = Math.min(state.hopeMax, state.hope + info.hope);
+  state.coins += info.cost;
+  state.grid[idx] = null;
+  showToast(`Harvested ${info.emoji} ${cell.name}: +${info.hope} hope, +${info.cost} coins`);
+  renderAll();
+}
+function triggerUndo(){
+  if(undoStack.isEmpty()){ showToast("Stack is empty."); return; }
+  const action = undoStack.pop();
+  if(action.type==="plant"){
+    state.grid[action.idx] = null;
+    state.seedBag[action.name] = (state.seedBag[action.name]||0) + 1;
+    state.water = Math.min(state.waterMax, state.water + action.waterRefund);
+    showToast(`Undid: ${action.label}`);
+  }
+  renderActionStack();
+  renderAll();
+}
+function advanceDay(){
+  state.day += 1;
+  state.energy = Math.min(state.energyMax, state.energy + 15);
+
+  const event = dequeueClimateEvent();
+  let freezesGrowth = false;
+  if(event){ event.apply(state); freezesGrowth = !!event.freezesGrowth; showToast(`Climate: ${event.label}`); }
+  enqueueClimateEvent(randomClimateEvent());
+
+  for(let i=0;i<25;i++){
+    const cell = state.grid[i];
+    if(!cell || cell.ready || freezesGrowth) continue;
+    const info = CATALOG[cell.name];
+    const cost = irrigationDistances[i] ?? 99;
+    const efficiency = 1/(1 + cost/4);
+    cell.age += efficiency;
+    if(cell.age >= info.growthDays) cell.ready = true;
+  }
+  state.hope = Math.max(0, state.hope - 1);
+  renderAll();
+}
+
+/* =====================================================================
+   CATALOG TAB HANDLERS
+===================================================================== */
+let currentCatalogView = Object.entries(CATALOG).map(([name,info])=>({name,...info}));
+let currentSortField = "cost";
+let activeCategory = categoryTree.name;
+
+function catalogRows(){
+  return activeCategory===categoryTree.name ? currentCatalogView : currentCatalogView.filter(p=>p.category===activeCategory);
+}
+function handleSort(){
+  const field = document.getElementById("sort-field").value;
+  const algo = document.getElementById("sort-algo").value;
+  currentSortField = field;
+  const base = Object.entries(CATALOG).map(([name,info])=>({name,...info}));
+  let result;
+  if(algo==="bubble") result=bubbleSort(base,field);
+  else if(algo==="insertion") result=insertionSort(base,field);
+  else if(algo==="selection") result=selectionSort(base,field);
+  else if(algo==="quick") result=quickSortCounted(base,field);
+  else result=mergeSort(base,field);
+  currentCatalogView = result.items;
+  document.getElementById("catalog-note").textContent = `${algo} sort by ${field}: ${result.comparisons} comparisons.`;
+  renderCatalogTable();
+}
+function handleSearch(){
+  const field = currentSortField;
+  const target = Number(document.getElementById("search-value").value);
+  const mode = document.getElementById("search-mode").value;
+  let result, arr = catalogRows();
+  if(mode==="binary"){
+    arr = mergeSort(arr, field).items; currentCatalogView = arr;
+    result = binarySearch(arr, field, target);
+  } else {
+    result = linearSearch(arr, field, target);
+  }
+  if(result.index===-1) document.getElementById("catalog-note").textContent = `${mode} search: not found (${result.comparisons} comparisons).`;
+  else document.getElementById("catalog-note").textContent = `${mode} search found "${arr[result.index].name}" in ${result.comparisons} comparisons.`;
+  renderCatalogTable();
+}
+function handleFastest(){ const n=growthBST.min(); document.getElementById("catalog-note").textContent = n ? `BST fastest grower: ${CATALOG[n.name].emoji} ${n.name} (${n.key} days)` : "BST empty."; }
+function handleSlowest(){ const n=growthBST.max(); document.getElementById("catalog-note").textContent = n ? `BST slowest grower: ${CATALOG[n.name].emoji} ${n.name} (${n.key} days)` : "BST empty."; }
+function handleBstTraversal(kind){
+  let order, label;
+  if(kind==="levelorder"){ order = growthBST.levelOrder(); label = "BFS Level-order"; }
+  else if(kind==="preorder"){ order = growthBST.preorder(); label = "DFS Pre-order (Root -> Left -> Right)"; }
+  else if(kind==="inorder"){ order = growthBST.inorder(); label = "DFS In-order (Left -> Root -> Right) — sorted by growth days"; }
+  else { order = growthBST.postorder(); label = "DFS Post-order (Left -> Right -> Root)"; }
+  const visual = order.map(n => `${CATALOG[n.name].emoji} ${n.name} (${n.key}d)`).join(" -> ");
+  document.getElementById("bst-traversal-output").textContent = `${label}:\n${visual}`;
+}
+function handleHashLookup(){
+  const key = document.getElementById("hash-lookup-input").value.trim();
+  const found = catalogHash.get(key);
+  const bucket = catalogHash.bucketIndexOf(key);
+  document.getElementById("catalog-note").textContent = found
+    ? `Hash lookup "${key}" -> bucket ${bucket}: cost ${found.cost}, hope ${found.hope}, growth ${found.growthDays}d.`
+    : `Hash lookup "${key}" -> bucket ${bucket}: not found.`;
+}
+function buyOne(name){
+  const info = CATALOG[name];
+  if(state.coins < info.cost){ showToast("Not enough coins."); return; }
+  state.coins -= info.cost;
+  state.seedBag[name] = (state.seedBag[name]||0) + 1;
+  renderAll();
+}
+function setCategory(cat){ activeCategory = cat; renderCatalogTable(); renderCategoryFilters(); }
+
+/* =====================================================================
+   ADVISOR TAB HANDLERS
+===================================================================== */
+function handleGreedy(){
+  const budget = Number(document.getElementById("greedy-budget").value) || 0;
+  const { bought, spent } = greedyPlan(budget);
+  const list = Object.entries(bought).map(([n,c])=>`${CATALOG[n].emoji} ${n} ×${c}`).join(", ") || "Nothing affordable.";
+  document.getElementById("greedy-result").innerHTML =
+    `Bought: ${list}<br>Spent ${spent} of ${budget} coins.
+     <button onclick='applyPlan(${JSON.stringify(bought)}, ${spent})' class="mt-2 bg-emerald-600 hover:bg-emerald-500 px-3 py-1 rounded-lg text-[11px] font-bold">Apply Plan</button>`;
+}
+function handleDP(){
+  const budget = Number(document.getElementById("dp-budget").value) || 0;
+  const { bought, hope } = knapsackPlan(budget);
+  const spent = Object.entries(bought).reduce((s,[n,c])=>s+CATALOG[n].cost*c,0);
+  const list = Object.entries(bought).map(([n,c])=>`${CATALOG[n].emoji} ${n} ×${c}`).join(", ") || "Nothing affordable.";
+  document.getElementById("dp-result").innerHTML =
+    `Bought: ${list}<br>Potential hope: +${hope}, spends ${spent} of ${budget} coins.
+     <button onclick='applyPlan(${JSON.stringify(bought)}, ${spent})' class="mt-2 bg-emerald-600 hover:bg-emerald-500 px-3 py-1 rounded-lg text-[11px] font-bold">Apply Plan</button>`;
+}
+function applyPlan(bought, spent){
+  if(state.coins < spent){ showToast("You no longer have enough coins for this plan."); return; }
+  state.coins -= spent;
+  Object.entries(bought).forEach(([name,count])=>{ state.seedBag[name] = (state.seedBag[name]||0) + count; });
+  showToast("Plan applied — seeds added to your bag.");
+  renderAll();
+}
+
+/* =====================================================================
+   IRRIGATION TAB HANDLERS
+===================================================================== */
+function runTraversal(kind){
+  const order = kind==="bfs" ? bfsFrom(irrigationGraph, RESERVOIR_INDEX) : dfsFrom(irrigationGraph, RESERVOIR_INDEX);
+  document.getElementById("traversal-output").textContent = `${kind.toUpperCase()} order from reservoir:\n${order.join(" -> ")}`;
+}
+
+/* =====================================================================
+   RENDER FUNCTIONS
+===================================================================== */
+function renderResources(){
+  document.getElementById("day-counter").textContent = state.day;
+  document.getElementById("stewardship-counter").textContent = Math.round(state.hope) + "%";
+  document.getElementById("water-text").textContent = `${Math.round(state.water)} / ${state.waterMax} L`;
+  document.getElementById("water-bar").style.width = `${Math.min(100,(state.water/state.waterMax)*100)}%`;
+  const seeds = totalSeeds();
+  document.getElementById("seeds-text").textContent = `${seeds} / 100`;
+  document.getElementById("seeds-bar").style.width = `${Math.min(100,(seeds/100)*100)}%`;
+  document.getElementById("energy-text").textContent = `${Math.round(state.energy)} / ${state.energyMax} Wh`;
+  document.getElementById("energy-bar").style.width = `${Math.min(100,(state.energy/state.energyMax)*100)}%`;
+  document.getElementById("hope-text").textContent = `${Math.round(state.hope)} / ${state.hopeMax}`;
+  document.getElementById("hope-bar").style.width = `${Math.min(100,(state.hope/state.hopeMax)*100)}%`;
+  document.getElementById("coins-text").textContent = `${state.coins} Coins`;
+}
+function renderGarden(){
+  const grid = document.getElementById("garden-grid");
+  grid.innerHTML = "";
+  for(let i=0;i<25;i++){
+    const cell = document.createElement("div");
+    cell.onclick = () => onCellClick(i);
+    if(i===RESERVOIR_INDEX){
+      cell.className = "cell-reservoir aspect-square rounded-xl flex items-center justify-center text-2xl cursor-pointer";
+      cell.textContent = "💧";
+    } else {
+      const occ = state.grid[i];
+      cell.className = "cell-soil aspect-square rounded-xl flex items-center justify-center text-2xl cursor-pointer" + (occ && occ.ready ? " cell-ready" : "");
+      if(occ){
+        const info = CATALOG[occ.name];
+        cell.textContent = occ.ready ? info.emoji : growthStage(occ, info).emoji;
+      } else {
+        cell.textContent = "⬜";
+      }
+    }
+    grid.appendChild(cell);
+  }
+}
+function renderCropSelector(){
+  const select = document.getElementById("crop-selector");
+  const prev = select.value;
+  select.innerHTML = "";
+  Object.entries(state.seedBag).filter(([,c])=>c>0).forEach(([name,count])=>{
+    const info = CATALOG[name];
+    const opt = document.createElement("option");
+    opt.value = name; opt.textContent = `${info.emoji} ${name} (×${count})`;
+    select.appendChild(opt);
+  });
+  if([...select.options].some(o=>o.value===prev)) select.value = prev;
+}
+function renderClimateQueue(){
+  const container = document.getElementById("climate-queue");
+  container.innerHTML = "";
+  climateQueue.forEach(ev=>{
+    const div = document.createElement("div");
+    div.className = "p-3 bg-amber-950/40 border border-amber-900 rounded-xl text-xs";
+    div.innerHTML = `<div class="font-bold text-amber-400">${ev.label}</div>`;
+    container.appendChild(div);
+  });
+}
+function renderActionStack(){
+  const container = document.getElementById("action-stack");
+  container.innerHTML = "";
+  [...undoStack.items].reverse().forEach(act=>{
+    const div = document.createElement("div");
+    div.className = "bg-emerald-950/60 border-l-2 border-amber-500 px-3 py-2 rounded text-xs text-emerald-100";
+    div.textContent = `→ ${act.label}`;
+    container.appendChild(div);
+  });
+}
+function renderCategoryFilters(){
+  const container = document.getElementById("category-filters");
+  container.innerHTML = "";
+  [categoryTree.name, ...categoryTree.children.map(c=>c.name)].forEach(name=>{
+    const btn = document.createElement("button");
+    btn.textContent = name;
+    btn.onclick = () => setCategory(name);
+    btn.className = "px-2.5 py-1 rounded-lg border " + (activeCategory===name ? "bg-emerald-700 border-emerald-500 text-white" : "bg-[#1b2219] border-emerald-800 text-emerald-300");
+    container.appendChild(btn);
+  });
+}
+function renderTaxonomyTree(){
+  const container = document.getElementById("taxonomy-tree");
+  if(!container) return;
+  container.innerHTML = "";
+
+  function renderNode(node, depth){
+    const hasChildren = node.children && node.children.length > 0;
+    const isOpen = expandedTaxonomyNodes.has(node.name);
+    const row = document.createElement("div");
+    row.className = "flex items-center gap-2 rounded-lg px-2 py-1 hover:bg-emerald-950/40";
+    row.style.marginLeft = `${depth * 18}px`;
+
+    const toggle = document.createElement("span");
+    toggle.className = "w-4 text-emerald-400 cursor-pointer select-none";
+    toggle.textContent = hasChildren ? (isOpen ? "▼" : "▶") : "•";
+    if(hasChildren) toggle.onclick = () => toggleTaxonomyNode(node.name);
+    row.appendChild(toggle);
+
+    const label = document.createElement("span");
+    if(node.type === "root"){
+      label.className = "font-bold text-emerald-100";
+      label.textContent = `🌍 ${node.name}`;
+    } else if(node.type === "category"){
+      label.className = "font-semibold text-emerald-300 cursor-pointer";
+      label.textContent = `📁 ${node.name} (${node.children.length})`;
+      label.onclick = () => { setCategory(node.name); switchTab("catalog"); };
+      label.title = "Click to filter the Seed Catalog by this category";
+    } else {
+      label.className = "text-emerald-100/90 cursor-pointer";
+      label.textContent = `${node.info.emoji} ${node.name} — ${node.info.cost}c, ${node.info.growthDays}d, +${node.info.hope} hope`;
+      label.onclick = () => { document.getElementById("taxonomy-output").textContent = `${node.info.emoji} ${node.name}\nCategory: ${node.info.category}\nCost: ${node.info.cost} coins\nGrowth time: ${node.info.growthDays} days\nWater need: ${node.info.waterNeed} L\nHope value: ${node.info.hope}\nOwned: ${state.seedBag[node.name]||0}`; };
+    }
+    row.appendChild(label);
+    container.appendChild(row);
+
+    if(hasChildren && isOpen) node.children.forEach(child => renderNode(child, depth + 1));
+  }
+  renderNode(categoryTree, 0);
+}
+function renderCatalogTable(){
+  const tbody = document.getElementById("catalog-body");
+  tbody.innerHTML = "";
+  catalogRows().forEach(p=>{
+    const owned = state.seedBag[p.name] || 0;
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${p.emoji}</td><td>${p.name}</td><td>${p.cost}c</td><td>${p.growthDays}d</td><td>${p.waterNeed}L</td><td>${p.hope}</td><td>${owned}</td>
+      <td><button onclick="buyOne('${p.name}')" class="bg-emerald-700 hover:bg-emerald-600 px-2 py-1 rounded text-[10px] font-bold">Buy 1 (${p.cost}c)</button></td>`;
+    tbody.appendChild(tr);
+  });
+}
+function renderIrrigationMap(){
+  const container = document.getElementById("irrigation-grid");
+  container.innerHTML = "";
+  for(let i=0;i<25;i++){
+    const div = document.createElement("div");
+    if(i===RESERVOIR_INDEX){ div.className="mini-cell cell-reservoir"; div.textContent="💧"; }
+    else {
+      const d = irrigationDistances[i];
+      const hue = Math.max(0, 200 - d*25);
+      div.className = "mini-cell";
+      div.style.background = `hsl(${hue},50%,25%)`;
+      div.style.color = "#e8f5e9";
+      div.textContent = d;
+    }
+    container.appendChild(div);
+  }
+}
+function renderAll(){
+  renderResources();
+  renderGarden();
+  renderCropSelector();
+  renderCatalogTable();
+}
+function showToast(msg){
+  const toast = document.createElement("div");
+  toast.className = "fixed bottom-6 right-6 bg-emerald-900 border border-emerald-400 text-white px-5 py-3 rounded-2xl shadow-2xl z-50 text-sm max-w-xs";
+  toast.textContent = msg;
+  document.body.appendChild(toast);
+  setTimeout(()=>toast.remove(), 2600);
+}
+
+/* =====================================================================
+   TAB SWITCHING
+===================================================================== */
+const TABS = ["game","catalog","taxonomy","irrigation","advisor","code"];
+function switchTab(tab){
+  TABS.forEach(t=>{
+    document.getElementById("view-"+t).classList.toggle("hidden", t!==tab);
+    const btn = document.getElementById("tab-"+t);
+    btn.classList.toggle("bg-[#283623]", t===tab);
+    btn.classList.toggle("text-emerald-100", t===tab);
+    btn.classList.toggle("text-emerald-400/80", t!==tab);
+  });
+  if(tab==="catalog"){ renderCategoryFilters(); renderCatalogTable(); }
+  if(tab==="taxonomy") renderTaxonomyTree();
+  if(tab==="irrigation") renderIrrigationMap();
+  if(tab==="code"){ document.getElementById("view-code").classList.remove("hidden"); document.getElementById("view-code").classList.add("flex"); }
+  else { document.getElementById("view-code").classList.remove("flex"); }
+  if(tab==="catalog"){ document.getElementById("view-catalog").classList.remove("hidden"); document.getElementById("view-catalog").classList.add("flex"); }
+  else { document.getElementById("view-catalog").classList.remove("flex"); }
+  if(tab==="advisor"){ document.getElementById("view-advisor").classList.remove("hidden"); document.getElementById("view-advisor").classList.add("flex"); }
+  else { document.getElementById("view-advisor").classList.remove("flex"); }
+  if(tab==="irrigation"){ document.getElementById("view-irrigation").classList.remove("hidden"); document.getElementById("view-irrigation").classList.add("flex"); }
+  else { document.getElementById("view-irrigation").classList.remove("flex"); }
+  if(tab==="taxonomy"){ document.getElementById("view-taxonomy").classList.remove("hidden"); document.getElementById("view-taxonomy").classList.add("flex"); }
+  else { document.getElementById("view-taxonomy").classList.remove("flex"); }
+}
+
+/* =====================================================================
+   PYTHON CODE LAB — Pyodide bridges target the "demo-" preview only,
+   completely separate from the live game state above.
+===================================================================== */
+let pyodideInstance = null;
+let demoGardenPlants = {};
+let demoActionHistory = [];
+
+const topicTemplates = {
+  1: { title:"Python OOP + Big O + Stacks", code:`# Topic 1: Python OOP + Big O + Stacks
+
+class Plant:
+    def __init__(self, name, emoji, cost, growth_days):
+        self.name = name
+        self.emoji = emoji
+        self.cost = cost
+        self.growth_days = growth_days
+        self.age = 0
+
+    def __repr__(self):
+        return f"{self.emoji} {self.name} (day {self.age}/{self.growth_days})"
+
+
+def find_plant_by_name(plants, target_name):   # O(n) worst case
+    for plant in plants:
+        if plant.name == target_name:
+            return plant
+    return None
+
+
+class ActionStack:                              # push/pop are O(1)
+    def __init__(self):
+        self._items = []
+
+    def push(self, action):
+        self._items.append(action)
+        pushAction(action)
+
+    def pop(self):
+        return self._items.pop() if self._items else None
+
+
+history = ActionStack()
+roses = Plant("Rose Bush", "🌹", cost=12, growth_days=5)
+history.push(f"Planted {roses.name}")
+sunflower = Plant("Sunflower", "🌻", cost=8, growth_days=3)
+history.push(f"Planted {sunflower.name}")
+print("Found:", find_plant_by_name([roses, sunflower], "Sunflower"))
+updateResources(water=150, seeds=40, energy=60, hope=20, coins=100)
+` },
+  2: { title:"Queues & Deques (FIFO Elements)", code:`# Topic 2: Queues & Deques (FIFO Elements)
+from collections import deque
+
+class ClimateQueue:
+    def __init__(self):
+        self._queue = deque()
+
+    def enqueue(self, event):
+        self._queue.append(event)
+        updateClimateQueue(list(self._queue))
+
+    def dequeue(self):
+        if not self._queue:
+            return None
+        event = self._queue.popleft()
+        pushAction(f"Resolved: {event}")
+        updateClimateQueue(list(self._queue))
+        return event
+
+climate = ClimateQueue()
+climate.enqueue("Heatwave incoming (Day 4)")
+climate.enqueue("Light rain expected (Day 5)")
+climate.enqueue("Frost warning (Day 9)")
+print("Resolved first (FIFO):", climate.dequeue())
+` },
+  3: { title:"Static/Dynamic Arrays, 2D Lists, & Memory Structures", code:`# Topic 3: Static/Dynamic Arrays, 2D Lists, & Memory Structures
+
+GRID_SIZE = 5
+garden_2d = [[None]*GRID_SIZE for _ in range(GRID_SIZE)]   # "static" 2D array
+
+def plant_at(row, col, name):
+    garden_2d[row][col] = name
+    addPlantToGrid(row*GRID_SIZE+col, name)
+    pushAction(f"Planted {name} at ({row},{col})")
+
+seed_inventory = []                                        # dynamic array
+def add_seed(name, emoji, cost):
+    seed_inventory.append((name, emoji, cost))
+    addPlantsToDropdown(seed_inventory)
+
+add_seed("Sunflower", "🌻", 8)
+add_seed("Carrot", "🥕", 4)
+plant_at(0, 0, "Sunflower")
+plant_at(2, 2, "Carrot")
+print(f"Dynamic inventory holds {len(seed_inventory)} seed types")
+updateResources(water=140, seeds=len(seed_inventory)*10, energy=50, hope=25, coins=90)
+` },
+  4: { title:"Hierarchical Trees & Traversals", code:`# Topic 4: Hierarchical Trees & Traversals
+
+class GardenZoneNode:
+    def __init__(self, name):
+        self.name = name
+        self.children = []
+
+    def add_child(self, node):
+        self.children.append(node)
+        return node
+
+root = GardenZoneNode("Sanctuary")
+veggies = root.add_child(GardenZoneNode("Vegetable Plots"))
+flowers = root.add_child(GardenZoneNode("Flower Beds"))
+veggies.add_child(GardenZoneNode("Carrots"))
+flowers.add_child(GardenZoneNode("Roses"))
+
+def preorder(node, depth=0):
+    pushAction(f"{'  '*depth}Visiting: {node.name}")
+    print("  "*depth + node.name)
+    for child in node.children:
+        preorder(child, depth+1)
+
+def level_order(start):
+    queue, order = [start], []
+    while queue:
+        current = queue.pop(0)
+        order.append(current.name)
+        queue.extend(current.children)
+    return order
+
+preorder(root)
+print("Level-order (BFS):", level_order(root))
+` },
+  5: { title:"Binary Search Trees (BST) & Node Mutation", code:`# Topic 5: Binary Search Trees (BST) & Node Mutation
+
+class BSTNode:
+    def __init__(self, growth_days, name):
+        self.growth_days = growth_days
+        self.name = name
+        self.left = None
+        self.right = None
+
+class PlantGrowthBST:
+    def __init__(self):
+        self.root = None
+
+    def insert(self, growth_days, name):
+        self.root = self._insert(self.root, growth_days, name)
+        pushAction(f"Inserted {name} ({growth_days}d) into BST")
+
+    def _insert(self, node, growth_days, name):
+        if node is None:
+            return BSTNode(growth_days, name)
+        if growth_days < node.growth_days:
+            node.left = self._insert(node.left, growth_days, name)
+        else:
+            node.right = self._insert(node.right, growth_days, name)
+        return node
+
+    def in_order(self):
+        result = []
+        def walk(node):
+            if node:
+                walk(node.left)
+                result.append((node.name, node.growth_days))
+                walk(node.right)
+        walk(self.root)
+        return result
+
+tree = PlantGrowthBST()
+for days, name in [(5,"Rose Bush"), (3,"Sunflower"), (4,"Carrot"), (7,"Oak Sapling")]:
+    tree.insert(days, name)
+print("Sorted by growth time:", tree.in_order())
+` },
+  6: { title:"Hash Tables, Collisions, & Rehashing", code:`# Topic 6: Hash Tables, Collisions, & Rehashing
+
+class PlantHashTable:
+    def __init__(self, capacity=4):
+        self.capacity = capacity
+        self.size = 0
+        self.buckets = [[] for _ in range(capacity)]
+
+    def _hash(self, key):
+        return sum(ord(ch) for ch in key) % self.capacity
+
+    def put(self, key, value):
+        if self.size / self.capacity >= 0.7:
+            self._rehash()
+        index = self._hash(key)
+        bucket = self.buckets[index]
+        for i, (k, _) in enumerate(bucket):
+            if k == key:
+                bucket[i] = (key, value)
+                return
+        bucket.append((key, value))
+        self.size += 1
+        pushAction(f"Hashed '{key}' -> bucket {index}")
+
+    def get(self, key):
+        for k, v in self.buckets[self._hash(key)]:
+            if k == key:
+                return v
+        return None
+
+    def _rehash(self):
+        old, self.capacity, self.size = self.buckets, self.capacity*2, 0
+        self.buckets = [[] for _ in range(self.capacity)]
+        for bucket in old:
+            for key, value in bucket:
+                self.put(key, value)
+        pushAction(f"Rehashed -> capacity {self.capacity}")
+
+table = PlantHashTable(capacity=4)
+table.put("Sunflower", {"cost": 8})
+table.put("Rose Bush", {"cost": 12})
+table.put("Carrot", {"cost": 4})
+table.put("Tomato", {"cost": 6})
+print("Rose Bush:", table.get("Rose Bush"))
+` },
+  7: { title:"Graph Foundations, Adjacency Matrices/Lists, & DFS/BFS", code:`# Topic 7: Graph Foundations, Adjacency Matrices/Lists, & DFS/BFS
+
+irrigation_graph = {
+    "Plot A": ["Plot B", "Plot C"],
+    "Plot B": ["Plot A", "Plot D"],
+    "Plot C": ["Plot A", "Plot D"],
+    "Plot D": ["Plot B", "Plot C", "Plot E"],
+    "Plot E": ["Plot D"],
+}
+
+def bfs(start):
+    visited, queue, order = {start}, [start], []
+    while queue:
+        node = queue.pop(0)
+        order.append(node)
+        for n in irrigation_graph[node]:
+            if n not in visited:
+                visited.add(n); queue.append(n)
+    return order
+
+def dfs(start, visited=None, order=None):
+    if visited is None:
+        visited, order = {start}, []
+    order.append(start)
+    for n in irrigation_graph[start]:
+        if n not in visited:
+            visited.add(n)
+            dfs(n, visited, order)
+    return order
+
+bfs_order = bfs("Plot A")
+pushAction(f"BFS: {' -> '.join(bfs_order)}")
+print("BFS:", bfs_order)
+print("DFS:", dfs("Plot A"))
+` },
+  8: { title:"Sorting Algorithms (Bubble, Insertion, Selection, Quick, & Merge Sort)", code:`# Topic 8: Sorting Algorithms
+
+plants = [
+    {"name": "Rose Bush", "cost": 12}, {"name": "Sunflower", "cost": 8},
+    {"name": "Carrot", "cost": 4}, {"name": "Tomato", "cost": 6},
+]
+
+def bubble_sort(items):
+    items = items.copy()
+    for i in range(len(items)):
+        for j in range(len(items)-i-1):
+            if items[j]["cost"] > items[j+1]["cost"]:
+                items[j], items[j+1] = items[j+1], items[j]
+    return items
+
+def merge_sort(items):
+    if len(items) <= 1:
+        return items
+    mid = len(items)//2
+    left, right = merge_sort(items[:mid]), merge_sort(items[mid:])
+    merged, i, j = [], 0, 0
+    while i < len(left) and j < len(right):
+        if left[i]["cost"] <= right[j]["cost"]:
+            merged.append(left[i]); i += 1
+        else:
+            merged.append(right[j]); j += 1
+    return merged + left[i:] + right[j:]
+
+print("Bubble:", [p["name"] for p in bubble_sort(plants)])
+print("Merge:", [p["name"] for p in merge_sort(plants)])
+pushAction("Sorted seed catalog by cost")
+` },
+  9: { title:"Searching Algorithms (Linear Search vs. Binary Search)", code:`# Topic 9: Searching Algorithms
+
+plants_sorted = [
+    {"name": "Carrot", "cost": 4}, {"name": "Tomato", "cost": 6},
+    {"name": "Sunflower", "cost": 8}, {"name": "Rose Bush", "cost": 12},
+]
+
+def linear_search(items, target):
+    for i, p in enumerate(items):
+        if p["cost"] == target:
+            return i
+    return -1
+
+def binary_search(items, target):
+    low, high = 0, len(items)-1
+    while low <= high:
+        mid = (low+high)//2
+        if items[mid]["cost"] == target:
+            return mid
+        elif items[mid]["cost"] < target:
+            low = mid+1
+        else:
+            high = mid-1
+    return -1
+
+print("Linear:", linear_search(plants_sorted, 8))
+print("Binary:", binary_search(plants_sorted, 8))
+pushAction("Searched catalog for cost 8")
+` },
+  10: { title:"Advanced Strategic Paradigms (Dijkstra's Algorithm & Greedy Patterns)", code:`# Topic 10: Dijkstra's Algorithm & Greedy Patterns
+
+irrigation_costs = {
+    "Reservoir": {"Plot A": 4, "Plot B": 8},
+    "Plot A": {"Reservoir": 4, "Plot B": 2, "Plot C": 5},
+    "Plot B": {"Reservoir": 8, "Plot A": 2, "Plot C": 3},
+    "Plot C": {"Plot A": 5, "Plot B": 3},
+}
+
+def dijkstra(graph, start):
+    unvisited = set(graph)
+    dist = {n: float("inf") for n in graph}
+    dist[start] = 0
+    while unvisited:
+        current = min(unvisited, key=lambda n: dist[n])
+        unvisited.remove(current)
+        for neighbor, cost in graph[current].items():
+            dist[neighbor] = min(dist[neighbor], dist[current]+cost)
+    return dist
+
+def greedy_seed_budget(seeds, budget):
+    bought, spent = [], 0
+    for seed in sorted(seeds, key=lambda s: s["cost"]):
+        if spent + seed["cost"] <= budget:
+            bought.append(seed["name"]); spent += seed["cost"]
+    return bought, spent
+
+print("Distances:", dijkstra(irrigation_costs, "Reservoir"))
+print("Greedy plan:", greedy_seed_budget([{"name":"Carrot","cost":4},{"name":"Rose Bush","cost":12}], 15))
+pushAction("Ran Dijkstra + greedy planner")
+` },
+  11: { title:"Dynamic Programming (DP), Memoization, & Divide-and-Conquer", code:`# Topic 11: Dynamic Programming, Memoization, & Divide-and-Conquer
+
+plants = [
+    {"name": "Carrot", "plots": 1, "hope": 3},
+    {"name": "Sunflower", "plots": 2, "hope": 6},
+    {"name": "Rose Bush", "plots": 3, "hope": 9},
+]
+BUDGET = 5
+
+def max_hope_dp(plants, budget):
+    n = len(plants)
+    dp = [[0]*(budget+1) for _ in range(n+1)]
+    for i in range(1, n+1):
+        p = plants[i-1]
+        for b in range(budget+1):
+            dp[i][b] = dp[i-1][b]
+            if p["plots"] <= b:
+                dp[i][b] = max(dp[i][b], dp[i-1][b-p["plots"]] + p["hope"])
+    return dp[n][budget]
+
+print("Best hope score:", max_hope_dp(plants, BUDGET))
+pushAction(f"Optimal plan reaches {max_hope_dp(plants, BUDGET)} hope")
+` },
+};
+
+async function initPyodide(){
+  if(pyodideInstance) return;
+  const consoleEl = document.getElementById("output-console");
+  if(consoleEl) consoleEl.innerHTML = `<span class="text-amber-400">Loading Python...</span><br>`;
+  try {
+    pyodideInstance = await loadPyodide();
+    pyodideInstance.globals.set("addPlantToGrid", demoAddPlantToGrid);
+    pyodideInstance.globals.set("updateResources", demoUpdateResources);
+    pyodideInstance.globals.set("addPlantsToDropdown", demoAddPlantsToDropdown);
+    pyodideInstance.globals.set("pushAction", demoPushAction);
+    pyodideInstance.globals.set("updateClimateQueue", demoUpdateClimateQueue);
+    await pyodideInstance.runPythonAsync(`
+import sys
+from js import document
+
+class Console:
+    def write(self, text):
+        if text and text.strip():
+            el = document.getElementById("output-console")
+            if el:
+                el.innerHTML += text.replace("\\n", "<br>")
+    def flush(self):
+        pass
+
+sys.stdout = Console()
+`);
+    if(consoleEl) consoleEl.innerHTML = `<span class="text-emerald-400">Python ready.</span><br>`;
+  } catch(err){
+    if(consoleEl) consoleEl.innerHTML = `<span class="text-red-400">Failed to load Python: ${err.message}</span>`;
+    throw err;
+  }
+}
+function demoUpdateClimateQueue(events){
+  const c = document.getElementById("demo-climate-queue"); c.innerHTML = "";
+  (events||[]).forEach(e=>{ const d=document.createElement("div"); d.className="p-1.5 bg-amber-950/40 border border-amber-900 rounded text-amber-300"; d.textContent=e; c.appendChild(d); });
+}
+function demoAddPlantToGrid(pos, name){ demoGardenPlants[pos]=name; renderDemoGarden(); }
+function renderDemoGarden(){
+  const grid = document.getElementById("demo-garden-grid"); grid.innerHTML = "";
+  for(let i=0;i<25;i++){ const cell=document.createElement("div"); cell.className="aspect-square bg-[#2a3825] rounded flex items-center justify-center text-sm border border-emerald-800"; cell.textContent = demoGardenPlants[i] ? "🌱" : "⬜"; grid.appendChild(cell); }
+}
+function demoUpdateResources(water,seeds,energy,hope,coins){
+  if(typeof water==="object" && water!==null){ const a=water; water=a.water??0; seeds=a.seeds??0; energy=a.energy??0; hope=a.hope??0; coins=a.coins??0; }
+  document.getElementById("demo-water-text").textContent=`${water}/200`; document.getElementById("demo-water-bar").style.width=`${Math.min(100,water/200*100)}%`;
+  document.getElementById("demo-seeds-text").textContent=`${seeds}/100`; document.getElementById("demo-seeds-bar").style.width=`${Math.min(100,seeds/100*100)}%`;
+  document.getElementById("demo-energy-text").textContent=`${energy}/120`; document.getElementById("demo-energy-bar").style.width=`${Math.min(100,energy/120*100)}%`;
+  document.getElementById("demo-hope-text").textContent=`${hope}/100`; document.getElementById("demo-hope-bar").style.width=`${Math.min(100,hope/100*100)}%`;
+  document.getElementById("demo-coins-text").textContent=coins;
+}
+function demoAddPlantsToDropdown(plants){
+  const select = document.getElementById("demo-crop-selector"); select.innerHTML="";
+  (plants||[]).forEach(([name,emoji,cost])=>{ const o=document.createElement("option"); o.textContent=`${emoji} ${name} (${cost}c)`; select.appendChild(o); });
+}
+function demoPushAction(action){
+  demoActionHistory.push(action); if(demoActionHistory.length>6) demoActionHistory.shift();
+  const c = document.getElementById("demo-action-stack"); c.innerHTML="";
+  [...demoActionHistory].reverse().forEach(a=>{ const d=document.createElement("div"); d.className="bg-emerald-950/60 border-l-2 border-amber-500 px-2 py-1 rounded text-emerald-100"; d.textContent=`→ ${a}`; c.appendChild(d); });
+}
+async function runPythonCode(){
+  const consoleEl = document.getElementById("output-console");
+  consoleEl.innerHTML = `<span class="text-amber-400">Running...</span><br>`;
+  try { await initPyodide(); const code = document.getElementById("code-editor").value.trim(); await pyodideInstance.runPythonAsync(code); }
+  catch(err){ consoleEl.innerHTML += `<span class="text-red-400">Error: ${err.message}</span>`; }
+}
+function loadTopic(){ const key = document.getElementById("topic-selector").value; document.getElementById("code-editor").value = topicTemplates[key].code; }
+
+/* =====================================================================
+   INIT
+===================================================================== */
+window.onload = () => {
+  document.getElementById("version-badge").textContent = "v" + APP_VERSION;
+  lucide.createIcons();
+
+  enqueueClimateEvent(randomClimateEvent());
+  enqueueClimateEvent(randomClimateEvent());
+  enqueueClimateEvent(randomClimateEvent());
+
+  renderAll();
+  renderActionStack();
+
+  const topicSelect = document.getElementById("topic-selector");
+  Object.keys(topicTemplates).forEach(k=>{ const opt=document.createElement("option"); opt.value=k; opt.textContent=topicTemplates[k].title; topicSelect.appendChild(opt); });
+  loadTopic();
+
+  switchTab("game");
+  initPyodide().catch(()=>{});
+};
+</script>
+</body>
+</html>
